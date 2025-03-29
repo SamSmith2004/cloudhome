@@ -1,0 +1,13 @@
+# TODO
+- [ ] Environment setup
+  - [X] Docker
+  - [X] Docker Compose
+  - [X] MinIO
+   - [X] Launcher
+   - [ ] Buckets
+  - [ ] PostgresSQL
+    - [X] Launcher
+    - [ ] Tables
+  - [ ] Redis
+- [ ] API/REST
+ - [X] Basic http Server + test endpoint

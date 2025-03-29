@@ -1,0 +1,95 @@
+services:
+  api:
+    build:
+      context: . # Look for Dockerfile in the current directory (cloudhome/)
+      dockerfile: Dockerfile
+    container_name: cloudhome_api
+    restart: unless-stopped
+    ports:
+      # Map host port (left side) to container port (right side)
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      # --- API ---
+      PORT: ${PORT:-8080}
+
+      # --- MinIO ---
+      MINIO_ENDPOINT: minio:${MINIO_PORT:-9000}
+      MINIO_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      MINIO_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_USE_SSL: "false"
+      # Optional: You might want a default bucket name here later
+      # MINIO_BUCKET: "cloudhome-data"
+
+      # --- Database ---
+      DB_DRIVER: postgres
+      DB_HOST: postgres
+      DB_PORT: ${POSTGRES_PORT:-5432}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      DB_SSL_MODE: "disable" # Typically 'disable' for internal Docker network connection
+
+    networks:
+      - cloudhome_net
+    depends_on:
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio:latest
+    container_name: cloudhome_minio
+    restart: unless-stopped
+    ports:
+      - "${MINIO_PORT:-9000}:${MINIO_PORT:-9000}"
+      - "${MINIO_CONSOLE_PORT:-9001}:${MINIO_CONSOLE_PORT:-9001}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      # Optional: Set a default region
+      # MINIO_REGION_NAME: "us-east-1"
+    volumes:
+      # Persist MinIO data using a named volume
+      - minio_data:/data
+    # Cmd to start server & serve data from /data
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
+    networks:
+      - cloudhome_net
+    healthcheck:
+      # Use MinIO Client (mc) to check readiness
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # init time
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: cloudhome_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Persist database data using a named volume
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - cloudhome_net
+    healthcheck:
+      # Use pg_isready utility to check if the server is accepting connections
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  cloudhome_net:
+    driver: bridge
+
+volumes:
+  minio_data: {}
+  postgres_data: {}
